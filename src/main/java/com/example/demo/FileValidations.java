@@ -5,68 +5,78 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
 public class FileValidations {
-	
+
 	final static String PLATES = "plates/";
 	final static String TUBES = "tubes/";
 
 	public static boolean areZipFileHeadersValid(String fileZipInput) {
 
 		try {
-			
+
 			ZipFile zipFile = new ZipFile(fileZipInput);
 
-		    Enumeration<? extends ZipEntry> entries = zipFile.entries();
+			Enumeration<? extends ZipEntry> entries = zipFile.entries();
 
-		    while(entries.hasMoreElements()){
-		        ZipEntry zipEntry = entries.nextElement();
-		        if(zipEntry.isDirectory()) {
-		        	if(zipEntry.getName().equals(PLATES)) {
-		        		zipEntry = entries.nextElement();
-						while(zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
+			while (entries.hasMoreElements()) {
+				ZipEntry zipEntry = entries.nextElement();
+				if (zipEntry.isDirectory()) {
+					if (zipEntry.getName().equals(PLATES)) {
+						zipEntry = entries.nextElement();
+						while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
 							InputStream stream = zipFile.getInputStream(zipEntry);
 							evaluateHeaders(stream);
-							
+
 							zipEntry = entries.nextElement();
 						}
-		        	}
-		        }
-		    }
+					} else if (zipEntry.getName().equals(TUBES)) {
+						zipEntry = entries.nextElement();
+						while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
+							InputStream stream = zipFile.getInputStream(zipEntry);
+							evaluateHeaders(stream);
+
+							zipEntry = entries.nextElement();
+						}
+					}
+				}
+			}
 
 			File destDir = new File("src/main/resources/unZipFile");
 			byte[] buffer = new byte[1024];
 			ZipInputStream zipStream = new ZipInputStream(new FileInputStream(fileZipInput));
-		
-			if(!checkFolderValidityInZipFile(zipStream)) {
+
+			if (!checkFolderValidityInZipFile(zipStream)) {
 				return false;
 			}
-			
+
 			zipStream = new ZipInputStream(new FileInputStream(fileZipInput));
-	
+
 			ZipEntry zipEntry = zipStream.getNextEntry();
-			
+
 			while (zipEntry != null) {
-				
+
 				String folderName = zipEntry.getName();
-				
-				if(folderName.equals(PLATES)) {
+
+				if (folderName.equals(PLATES)) {
 					zipEntry = zipStream.getNextEntry();
-					while(zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
-						if(!zipEntry.getName().endsWith(".csv")) {
+					while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
+						if (!zipEntry.getName().endsWith(".csv")) {
 							return false;
 						}
 						zipEntry = zipStream.getNextEntry();
 					}
-				}
-				else if(folderName.equals(TUBES)) {
+				} else if (folderName.equals(TUBES)) {
 					zipEntry = zipStream.getNextEntry();
-					while(zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
-						if(!zipEntry.getName().endsWith(".csv")) {
+					while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
+						if (!zipEntry.getName().endsWith(".csv")) {
 							return false;
 						}
 						zipEntry = zipStream.getNextEntry();
@@ -81,37 +91,102 @@ public class FileValidations {
 		}
 		return true;
 	}
-	
+
+	private static boolean checkFolderValidityInZipFile(ZipInputStream zipStream) {
+		try {
+
+			int plateFileCount = 0;
+			int tubeFileCount = 0;
+			ZipEntry zipEntry = zipStream.getNextEntry();
+
+			while (zipEntry != null) {
+
+				String folderName = zipEntry.getName();
+				if (zipEntry.isDirectory()) {
+					if (folderName.equals(PLATES)) {
+						zipEntry = zipStream.getNextEntry();
+						while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
+							if (!zipEntry.getName().endsWith(".csv")) {
+								return false;
+							}
+							plateFileCount++;
+							zipEntry = zipStream.getNextEntry();
+						}
+					} else if (folderName.equals(TUBES)) {
+						zipEntry = zipStream.getNextEntry();
+						while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
+							if (!zipEntry.getName().endsWith(".csv")) {
+								return false;
+							}
+							tubeFileCount++;
+							zipEntry = zipStream.getNextEntry();
+						}
+					} else {
+						return false;
+					}
+				} else if (!zipEntry.isDirectory()) {
+					return false;
+				}
+			}
+
+			if (plateFileCount > 100 || tubeFileCount > 10) {
+				return false;
+			}
+		} catch (Exception e) {
+			System.out.println(e);
+		}
+		return true;
+	}
+
 	private static boolean evaluateHeaders(InputStream stream) {
-        
-        Scanner scanner = new Scanner(stream).useDelimiter(",");
-        
-        ArrayList<String> foundHeadersList = new ArrayList<>();
-        ArrayList<String> remainingHeadersList = getMandatoryHeaders();
-        
-        while(scanner.hasNext()) {
-        	String header = scanner.next();
-        	if(!isHeader(header)) {
-        		break;
-        	}
-        	else {
-        		if(header.startsWith("ct") || header.startsWith("aq")) {
-        			if(header.endsWith("_o") || header.endsWith("_m")) {
-        				if(remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
-        					remainingHeadersList.remove(header);
-        					foundHeadersList.add(header);
-        				}
-        				else if(foundHeadersList.contains(header) || !remainingHeadersList.contains(header)) {
-        					return false;
-        				}
-        			}
-        		}
-        		else if(header.startsWith("cp")) {
-        			
-        		}
-        	}
-        }
-        return true;
+
+		Scanner scanner = new Scanner(stream).useDelimiter(",");
+
+		ArrayList<String> foundHeadersList = new ArrayList<>();
+		ArrayList<String> remainingHeadersList = getMandatoryHeaders();
+
+		HashMap<String, Integer> compoundHeaders = getCompoundHeaders();
+		HashSet<String> indexNumberSet = new HashSet<>();
+
+		while (scanner.hasNext()) {
+			String header = scanner.next();
+			if (!isHeader(header)) {
+				return false;
+			} else {
+				if (header.startsWith("ct") || header.startsWith("aq")) {
+					if (header.endsWith("_o") || header.endsWith("_m")) {
+						if (remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
+							remainingHeadersList.remove(header);
+							foundHeadersList.add(header);
+						} else if (foundHeadersList.contains(header)) {
+							return false;
+						} else if (!remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
+							return false;
+						}
+					}
+				} else if (header.startsWith("cp") && header.endsWith("_o")) {
+					String indexNumber = header.split("_")[1];
+					String compoundHeader = header.split("_", 3)[2];
+
+					if (compoundHeaders.containsKey(compoundHeader)) {
+						compoundHeaders.put(compoundHeader, compoundHeaders.get(compoundHeader) + 1);
+					}
+					indexNumberSet.add(indexNumber);
+				}
+			}
+		}
+
+		if (remainingHeadersList.size() != 0) {
+			return false;
+		}
+
+		for (Map.Entry<String, Integer> header : compoundHeaders.entrySet()) {
+			if (header.getValue() != indexNumberSet.size()) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private static ArrayList<String> getMandatoryHeaders() {
@@ -129,57 +204,22 @@ public class FileValidations {
 		};
 	}
 
-	private static boolean isHeader(String header) {
-		return header.startsWith("ct") || header.startsWith("aq") || header.startsWith("cp");
+	private static HashMap<String, Integer> getCompoundHeaders() {
+		return new HashMap<String, Integer>() {
+			{
+				put("smiles_o", 0);
+				put("concentration_o", 0);
+				put("pub_chem_id_o", 0);
+				put("cas_number_o", 0);
+				put("mfcd_number_o", 0);
+				put("solubility_flag_o", 0);
+				put("hazard_flags_o", 0);
+			}
+		};
 	}
 
-	private static boolean checkFolderValidityInZipFile(ZipInputStream zipStream) {
-		try {
-			
-			int plateFileCount = 0;
-			int tubeFileCount = 0;
-			ZipEntry zipEntry = zipStream.getNextEntry();
-			
-			while(zipEntry != null) {
-				
-				String folderName = zipEntry.getName();
-				if(zipEntry.isDirectory()) {
-					if(folderName.equals(PLATES)) {
-						zipEntry = zipStream.getNextEntry();
-						while(zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
-							if(!zipEntry.getName().endsWith(".csv")) {
-								return false;
-							}
-							plateFileCount++;
-							zipEntry = zipStream.getNextEntry();
-						}
-					}
-					else if(folderName.equals(TUBES)) {
-						zipEntry = zipStream.getNextEntry();
-						while(zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
-							if(!zipEntry.getName().endsWith(".csv")) {
-								return false;
-							}
-							tubeFileCount++;
-							zipEntry = zipStream.getNextEntry();
-						}
-					}
-					else {
-						return false;
-					}
-				}
-				else if(!zipEntry.isDirectory()) {
-					return false;
-				}	
-			}
-			
-			if(plateFileCount > 100 || tubeFileCount > 10) {
-				return false;
-			}
-		}catch(Exception e) {
-			System.out.println(e);
-		}
-		return true;
+	private static boolean isHeader(String header) {
+		return header.startsWith("ct") || header.startsWith("aq") || header.startsWith("cp");
 	}
 
 	public static void main(String[] args) {
