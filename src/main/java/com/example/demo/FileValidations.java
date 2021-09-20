@@ -147,24 +147,35 @@ public class FileValidations {
 
 		HashMap<String, Integer> compoundHeaders = getCompoundHeaders();
 		HashSet<String> indexNumberSet = new HashSet<>();
+		
+		int count = 0;
 
 		while (scanner.hasNext()) {
+			
 			String header = scanner.next();
+			if(header.contains("\n")) {
+				header = header.split("\n")[0];
+				count++;
+			}
 			if (!isHeader(header)) {
-				return false;
-			} else {
+//				break;
+			} 
+			else {
 				if (header.startsWith("ct") || header.startsWith("aq")) {
 					if (header.endsWith("_o") || header.endsWith("_m")) {
 						if (remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
 							remainingHeadersList.remove(header);
 							foundHeadersList.add(header);
-						} else if (foundHeadersList.contains(header)) {
+						} 
+						else if (foundHeadersList.contains(header)) {
 							return false;
-						} else if (!remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
+						} 
+						else if (!remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
 							return false;
 						}
 					}
-				} else if (header.startsWith("cp") && header.endsWith("_o")) {
+				} 
+				else if (header.startsWith("cp") && header.endsWith("_o")) {
 					String indexNumber = header.split("_")[1];
 					String compoundHeader = header.split("_", 3)[2];
 
@@ -185,6 +196,8 @@ public class FileValidations {
 				return false;
 			}
 		}
+		
+		System.out.println("Count :" + count);
 
 		return true;
 	}
@@ -219,7 +232,7 @@ public class FileValidations {
 	}
 
 	private static boolean isHeader(String header) {
-		return header.startsWith("ct") || header.startsWith("aq") || header.startsWith("cp");
+		return header.startsWith("ct_") || header.startsWith("aq_") || header.startsWith("cp_");
 	}
 
 	public static void main(String[] args) {
