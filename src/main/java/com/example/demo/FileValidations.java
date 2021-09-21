@@ -7,6 +7,7 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -48,7 +49,12 @@ public class FileValidations {
 						zipEntry = entries.nextElement();
 						while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
 							InputStream stream = zipFile.getInputStream(zipEntry);
-							evaluateHeaders(stream);
+							BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+							
+							String headers[] = reader.readLine().split(",");
+							if(!evaluateHeaders(headers)) {
+								return false;   // All headers are not present in the csv file
+							}
 
 							zipEntry = entries.nextElement();
 						}
@@ -56,7 +62,12 @@ public class FileValidations {
 						zipEntry = entries.nextElement();
 						while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
 							InputStream stream = zipFile.getInputStream(zipEntry);
-							evaluateHeaders(stream);
+							BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+							
+							String headers[] = reader.readLine().split(",");
+							if(!evaluateHeaders(headers)) {
+								return false;   // All headers are not present in the csv file
+							}
 
 							zipEntry = entries.nextElement();
 						}
@@ -147,7 +158,7 @@ public class FileValidations {
 						zipEntry = zipStream.getNextEntry();
 						while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
 							if (!zipEntry.getName().endsWith(".csv") || zipEntry.getName().startsWith("../")) {
-								return false;
+								return false;  // Not a csv file
 							}
 							plateFileCount++;
 							zipEntry = zipStream.getNextEntry();
@@ -156,21 +167,21 @@ public class FileValidations {
 						zipEntry = zipStream.getNextEntry();
 						while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
 							if (!zipEntry.getName().endsWith(".csv") || zipEntry.getName().startsWith("../")) {
-								return false;
+								return false;  // Not a csv file
 							}
 							tubeFileCount++;
 							zipEntry = zipStream.getNextEntry();
 						}
 					} else {
-						return false;
+						return false;  // Folder other than plates and tubes present in zip file
 					}
 				} else if (!zipEntry.isDirectory()) {
-					return false;
+					return false;  // Invalid zip folder structure
 				}
 			}
 
 			if (plateFileCount > 100 || tubeFileCount > 10) {
-				return false;
+				return false;  // File max upload limit of plates or tubes exceeded
 			}
 		} catch (Exception e) {
 			System.out.println(e);
@@ -178,49 +189,40 @@ public class FileValidations {
 		return true;
 	}
 
-	private static boolean evaluateHeaders(InputStream stream) {
-
-		Scanner scanner = new Scanner(stream).useDelimiter(",");
+	private static boolean evaluateHeaders(String headers[]) {
 
 		ArrayList<String> foundHeadersList = new ArrayList<>();
 		ArrayList<String> remainingHeadersList = getMandatoryHeaders();
-
+		
 		HashMap<String, Integer> compoundHeaders = getCompoundHeaders();
 		HashSet<String> indexNumberSet = new HashSet<>();
 
-		while (scanner.hasNext()) {
+		for(int i=0;i<headers.length;i++){
 			
-			String header = scanner.next();
-			if(header.contains("\n")) {
-				header = header.split("\n")[0];
-			}
-			if (!isHeader(header)) {
-				break;
-			} 
-			else {
-				if (header.startsWith("ct") || header.startsWith("aq")) {
-					if (header.endsWith("_o") || header.endsWith("_m")) {
-						if (remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
-							remainingHeadersList.remove(header);
-							foundHeadersList.add(header);
-						} 
-						else if (foundHeadersList.contains(header)) {
-							return false;    // Duplicate header found in csv
-						} 
-						else if (!remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
-							return false;	// Invalid header (Header not present in template)
-						}
+			String header = headers[i];
+			
+			if (header.startsWith("ct_") || header.startsWith("aq_")) {
+				if (header.endsWith("_o") || header.endsWith("_m")) {
+					if (remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
+						remainingHeadersList.remove(header);
+						foundHeadersList.add(header);
+					} 
+					else if (foundHeadersList.contains(header)) {
+						return false;    // Duplicate header found in csv
+					} 
+					else if (!remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
+						return false;	// Invalid header (Header not present in template)
 					}
-				} 
-				else if (header.startsWith("cp") && header.endsWith("_o")) {
-					String indexNumber = header.split("_")[1];
-					String compoundHeader = header.split("_", 3)[2];
-
-					if (compoundHeaders.containsKey(compoundHeader)) {
-						compoundHeaders.put(compoundHeader, compoundHeaders.get(compoundHeader) + 1);
-					}
-					indexNumberSet.add(indexNumber);
 				}
+			} 
+			else if (header.startsWith("cp_") && header.endsWith("_o")) {
+				String indexNumber = header.split("_")[1];
+				String compoundHeader = header.split("_", 3)[2];
+
+				if (compoundHeaders.containsKey(compoundHeader)) {
+					compoundHeaders.put(compoundHeader, compoundHeaders.get(compoundHeader) + 1);
+				}
+				indexNumberSet.add(indexNumber);
 			}
 		}
 
