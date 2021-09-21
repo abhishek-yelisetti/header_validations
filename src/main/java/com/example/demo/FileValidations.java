@@ -33,7 +33,11 @@ public class FileValidations {
 			UnzipFile.unzipFile(fileZipInput);
 
 			if (!haveValidContainerAliquotCounts()) {
-				return false;
+				return false; // Container aliquot count and number of rows in csv mismatch found
+			}
+
+			if (!haveValidTubesUploadLimitPerFile()) {
+				return false; // Max tubes limit per file exceeded
 			}
 
 			ZipFile zipFile = new ZipFile(fileZipInput);
@@ -81,16 +85,46 @@ public class FileValidations {
 		return true;
 	}
 
-	private static boolean haveValidContainerAliquotCounts() {
-
-		final String PLATE_FILE_PATH = "src/main/resources/container_data/plates";
+	private static boolean haveValidTubesUploadLimitPerFile() {
 		final String TUBE_FILE_PATH = "src/main/resources/container_data/tubes";
 
 		final int TUBES_FILE_LIMIT = 1000;
 
 		try {
-			File plates = new File(PLATE_FILE_PATH);
 			File tubes = new File(TUBE_FILE_PATH);
+
+			if (tubes.exists() && tubes.isDirectory()) {
+				for (File tube_data : tubes.listFiles()) {
+					FileInputStream fstream = new FileInputStream(tube_data);
+					BufferedReader br = new BufferedReader(new InputStreamReader(new DataInputStream(fstream)));
+
+					int line_count = 0;
+
+					String line = "";
+					while ((line = br.readLine()) != null) {
+						line_count++;
+					}
+
+					line_count--; // Removing header line
+
+					if (line_count > TUBES_FILE_LIMIT) {
+						return false; // No. of rows in the csv is greater than the max tubes per file limit
+					}
+				}
+			}
+		} catch (Exception e) {
+			System.out.println(e);
+		}
+
+		return true;
+	}
+
+	private static boolean haveValidContainerAliquotCounts() {
+
+		final String PLATE_FILE_PATH = "src/main/resources/container_data/plates";
+
+		try {
+			File plates = new File(PLATE_FILE_PATH);
 
 			if (plates.exists() && plates.isDirectory()) {
 				for (File plate_data : plates.listFiles()) {
@@ -113,27 +147,6 @@ public class FileValidations {
 					}
 				}
 			}
-
-			if (tubes.exists() && tubes.isDirectory()) {
-				for (File tube_data : tubes.listFiles()) {
-					FileInputStream fstream = new FileInputStream(tube_data);
-					BufferedReader br = new BufferedReader(new InputStreamReader(new DataInputStream(fstream)));
-
-					int line_count = 0;
-
-					String line = "";
-					while ((line = br.readLine()) != null) {
-						line_count++;
-					}
-
-					line_count--; // Removing header line
-
-					if (line_count > TUBES_FILE_LIMIT) {
-						return false; // No. of rows in the csv is greater than the max tubes per file limit
-					}
-				}
-			}
-
 		} catch (Exception e) {
 			System.out.println(e);
 		}
@@ -198,6 +211,10 @@ public class FileValidations {
 		for (int i = 0; i < headers.length; i++) {
 
 			String header = headers[i];
+
+			if (!isHeader(header)) {
+				break;
+			}
 
 			if (header.startsWith("ct_") || header.startsWith("aq_")) {
 				if (header.endsWith("_o") || header.endsWith("_m")) {
