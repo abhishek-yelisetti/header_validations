@@ -8,7 +8,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 public class UnzipFile {
-    public  UnzipFile(String filePath) throws IOException {
+	
+    public static void unzipFile(String filePath) throws IOException {
         final String fileZip = filePath;
         String unzipName=(filePath.substring(filePath.lastIndexOf("/")+1));
         final File destDir = new File("src/main/resources/"+unzipName.substring(0,unzipName.lastIndexOf('.')));

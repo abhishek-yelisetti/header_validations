@@ -1,8 +1,11 @@
 package com.example.demo;
 
+import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -22,6 +25,18 @@ public class FileValidations {
 
 		try {
 
+			ZipInputStream zipStream = new ZipInputStream(new FileInputStream(fileZipInput));
+
+			if (!checkFolderValidityInZipFile(zipStream)) {
+				return false;  // Invalid zip file folder structure
+			}
+			
+			UnzipFile.unzipFile(fileZipInput);
+			
+			if(!haveValidContainerAliquotCounts()) {
+				return false;
+			}
+			
 			ZipFile zipFile = new ZipFile(fileZipInput);
 
 			Enumeration<? extends ZipEntry> entries = zipFile.entries();
@@ -48,45 +63,72 @@ public class FileValidations {
 					}
 				}
 			}
-			new UnzipFile(fileZipInput);
-			ZipInputStream zipStream = new ZipInputStream(new FileInputStream(fileZipInput));
-
-			if (!checkFolderValidityInZipFile(zipStream)) {
-				return false;
-			}
-
-			zipStream = new ZipInputStream(new FileInputStream(fileZipInput));
-
-			ZipEntry zipEntry = zipStream.getNextEntry();
-
-			while (zipEntry != null) {
-
-				String folderName = zipEntry.getName();
-
-				if (folderName.equals(PLATES)) {
-					zipEntry = zipStream.getNextEntry();
-					while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
-						if (!zipEntry.getName().endsWith(".csv")) {
-							return false;
-						}
-						zipEntry = zipStream.getNextEntry();
-					}
-				} else if (folderName.equals(TUBES)) {
-					zipEntry = zipStream.getNextEntry();
-					while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
-						if (!zipEntry.getName().endsWith(".csv")) {
-							return false;
-						}
-						zipEntry = zipStream.getNextEntry();
-					}
-				}
-			}
 
 			zipStream.closeEntry();
 			zipStream.close();
 		} catch (Exception e) {
 			System.out.println(e);
 		}
+		return true;
+	}
+
+	private static boolean haveValidContainerAliquotCounts() {
+		
+		final String PLATE_FILE_PATH = "src/main/resources/container_data/plates";
+		final String TUBE_FILE_PATH = "src/main/resources/container_data/tubes";
+		
+		final int TUBES_FILE_LIMIT = 1000;
+		
+		try {
+			File plates = new File(PLATE_FILE_PATH);
+			File tubes = new File(TUBE_FILE_PATH);
+			
+			if(plates.exists() && plates.isDirectory()) {
+				for(File plate_data : plates.listFiles()) {
+					FileInputStream fstream = new FileInputStream(plate_data);
+	                BufferedReader br = new BufferedReader(new InputStreamReader(new DataInputStream(fstream)));
+	                
+	                int line_count = 0;
+	                
+	                String line = "";
+	                while((line = br.readLine()) != null) {
+	                	line_count++;
+	                }
+	                
+	                line_count--;  // Removing header line
+	                
+	                int container_aliquot_count = 10;  // Get container aliquot count from Data base 
+	                
+	                if(line_count > container_aliquot_count) {
+	                	return false;  // No. of rows in the csv is greater than the container aliquot count
+	                }
+				}		
+			}
+			
+			if(tubes.exists() && tubes.isDirectory()) {
+				for(File tube_data : tubes.listFiles()) {
+					FileInputStream fstream = new FileInputStream(tube_data);
+					BufferedReader br = new BufferedReader(new InputStreamReader(new DataInputStream(fstream)));
+					
+	                int line_count = 0;
+	                
+	                String line = "";
+	                while((line = br.readLine()) != null) {
+	                	line_count++;
+	                }
+	               
+	                line_count--;  // Removing header line
+	                
+	                if(line_count > TUBES_FILE_LIMIT) {
+	                	return false;   // No. of rows in the csv is greater than the max tubes per file limit 
+	                }
+				}		
+			}
+			
+		}catch(Exception e) {
+			System.out.println(e);
+		}
+		
 		return true;
 	}
 
@@ -104,7 +146,7 @@ public class FileValidations {
 					if (folderName.equals(PLATES)) {
 						zipEntry = zipStream.getNextEntry();
 						while (zipEntry != null && zipEntry.getName().startsWith(PLATES) && !zipEntry.isDirectory()) {
-							if (!zipEntry.getName().endsWith(".csv")) {
+							if (!zipEntry.getName().endsWith(".csv") || zipEntry.getName().startsWith("../")) {
 								return false;
 							}
 							plateFileCount++;
@@ -113,7 +155,7 @@ public class FileValidations {
 					} else if (folderName.equals(TUBES)) {
 						zipEntry = zipStream.getNextEntry();
 						while (zipEntry != null && zipEntry.getName().startsWith(TUBES) && !zipEntry.isDirectory()) {
-							if (!zipEntry.getName().endsWith(".csv")) {
+							if (!zipEntry.getName().endsWith(".csv") || zipEntry.getName().startsWith("../")) {
 								return false;
 							}
 							tubeFileCount++;
@@ -145,18 +187,15 @@ public class FileValidations {
 
 		HashMap<String, Integer> compoundHeaders = getCompoundHeaders();
 		HashSet<String> indexNumberSet = new HashSet<>();
-		
-		int count = 0;
 
 		while (scanner.hasNext()) {
 			
 			String header = scanner.next();
 			if(header.contains("\n")) {
 				header = header.split("\n")[0];
-				count++;
 			}
 			if (!isHeader(header)) {
-//				break;
+				break;
 			} 
 			else {
 				if (header.startsWith("ct") || header.startsWith("aq")) {
@@ -166,10 +205,10 @@ public class FileValidations {
 							foundHeadersList.add(header);
 						} 
 						else if (foundHeadersList.contains(header)) {
-							return false;
+							return false;    // Duplicate header found in csv
 						} 
 						else if (!remainingHeadersList.contains(header) && !foundHeadersList.contains(header)) {
-							return false;
+							return false;	// Invalid header (Header not present in template)
 						}
 					}
 				} 
@@ -186,16 +225,14 @@ public class FileValidations {
 		}
 
 		if (remainingHeadersList.size() != 0) {
-			return false;
+			return false;    // All headers in template not present in csv file
 		}
 
 		for (Map.Entry<String, Integer> header : compoundHeaders.entrySet()) {
 			if (header.getValue() != indexNumberSet.size()) {
-				return false;
+				return false;  // All compound headers not present (varying indexes) 
 			}
 		}
-		
-		System.out.println("Count :" + count);
 
 		return true;
 	}
