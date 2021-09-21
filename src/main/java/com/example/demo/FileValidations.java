@@ -48,9 +48,7 @@ public class FileValidations {
 					}
 				}
 			}
-
-			File destDir = new File("src/main/resources/unZipFile");
-			byte[] buffer = new byte[1024];
+			new UnzipFile(fileZipInput);
 			ZipInputStream zipStream = new ZipInputStream(new FileInputStream(fileZipInput));
 
 			if (!checkFolderValidityInZipFile(zipStream)) {
